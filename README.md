@@ -2,7 +2,6 @@
 
 **Mata Kuliah:** Pengolahan Citra dan Video  
 **Cakupan Materi:** Pertemuan 9–14 (Color Model, Segmentasi, Morfologi, Thresholding)  
-**Batas Pengumpulan:** Minggu ke-16
 
 ---
 
@@ -19,7 +18,7 @@
 ## 2. Hasil Deteksi
 
 ### Jumlah Mobil Terdeteksi
-**Total: [XX] mobil**
+**Total: 18 mobil**
 
 > Catatan: Angka ini akan berubah sesuai dengan hasil deteksi program saat dijalankan pada input image yang digunakan.
 
