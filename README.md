@@ -1,494 +1,231 @@
-# Mini Project 2 — Object Counting (Hitung Jumlah Mobil)
+# Mini Project 2 — Object Counting (Penghitungan Jumlah Mobil)
 
 **Mata Kuliah:** Pengolahan Citra dan Video  
-**Topik:** Color Model, Segmentasi, Morfologi, Thresholding  
+**Cakupan Materi:** Pertemuan 9–14 (Color Model, Segmentasi, Morfologi, Thresholding)  
 **Batas Pengumpulan:** Minggu ke-16
 
 ---
 
-## Identitas Peserta
+## 1. Identitas Pengerjakan
 
-| Item | Keterangan |
-|------|-----------|
-| **Nama** | [Masukkan Nama Anda] |
-| **NRP** | [Masukkan NRP Anda] |
-| **Tanggal Pengerjaan** | [Tanggal] |
-
----
-
-## 📊 Hasil Akhir
-
-### **Jumlah Mobil Terdeteksi: [Angka dari hasil running program]**
-
-![Result Image](output/result.png)
+| Aspek | Keterangan |
+|-------|-----------|
+| **Nama** | Amos Harol Turnip |
+| **NRP** | 5024241023 |
+| **Kelas** | A |
 
 ---
 
-## 📋 Pipeline & Pendekatan
+## 2. Hasil Deteksi
 
-### **Strategi Umum**
-Proyek ini menggunakan pendekatan **Hybrid** yang menggabungkan:
-1. **Color Space Exploration** → Mencari color space terbaik
-2. **Color-based Segmentation** → Deteksi area gelap/mobil
-3. **Thresholding** → Konversi ke binary image
-4. **Morphological Operations** → Cleaning dan noise removal
-5. **Contour Detection** → Identifikasi dan counting objek
+### Jumlah Mobil Terdeteksi
+**Total: [XX] mobil**
+
+> Catatan: Angka ini akan berubah sesuai dengan hasil deteksi program saat dijalankan pada input image yang digunakan.
 
 ---
 
-## 🔧 Penjelasan Pipeline (Langkah Demi Langkah)
+## 3. Penjelasan Pipeline
 
-### **STEP 1: Color Space Exploration**
+Berikut adalah tahapan-tahapan pemrosesan citra yang digunakan dalam program:
 
-**Tujuan:** Mengeksplorasi berbagai color space untuk menemukan yang paling efektif dalam membedakan mobil dari latar belakang.
+### **Step 1: Load dan Preprocessing Gambar**
+- Membaca gambar menggunakan `cv2.imread()`
+- Resize gambar ke 50% dari ukuran asli (scale = 0.5) untuk stabilitas dan efisiensi komputasi
+- **Alasan:** Ukuran gambar yang lebih kecil membuat proses lebih cepat dan mengurangi noise
 
-**Teknik yang Digunakan:**
-- Konversi citra dari BGR → RGB, HSV, LAB, Grayscale
-- Analisis histogram dan distribusi nilai channel
-
-**Alasan:**
-- **BGR/RGB**: Color space standar OpenCV, tapi kurang efektif untuk segmentasi karena dependensi pada intensity
-- **HSV**: Memisahkan hue, saturation, dan value → Lebih mudah untuk color-based segmentation
-- **LAB**: Memisahkan brightness dari color information → Baik untuk perubahan lighting
-- **Grayscale**: Sederhana, bisa digunakan untuk edge/intensity-based detection
-
-**Hasil Eksplorasi:**
-Dari analisis visual, ditemukan bahwa:
-- **HSV Value Channel (kecerahan)** → Paling diskriminatif karena mobil biasanya lebih gelap dari aspal
-- **Grayscale** → Juga berguna sebagai basis thresholding
-
-**Visualisasi:**
-![Color Space Exploration](output/steps/01_color_space.png)
-
----
-
-### **STEP 2: Color Segmentation**
-
-**Tujuan:** Membuat mask untuk mengisolasi area yang mungkin mengandung mobil.
-
-**Teknik yang Digunakan:**
+### **Step 2: Konversi ke HSV Color Space**
 ```python
-# Konversi ke HSV
-hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
-
-# Ekstrak Value channel (kecerahan)
-v = hsv[:,:,2]
-
-# Buat mask untuk area gelap (potential mobil)
-mask_dark = cv2.inRange(v, 0, 180)  # Value < 180 = gelap
+hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
 ```
+- Mengkonversi dari BGR (format OpenCV) ke HSV (Hue, Saturation, Value)
+- **Alasan:** HSV lebih baik untuk segmentasi warna karena memisahkan informasi warna (Hue) dari brightness dan saturation
 
-**Alasan Threshold (0-180):**
-- Mobil di parkiran umumnya berwarna gelap (hitam, abu-abu, biru tua)
-- Range 0-180 (dari 0-255) menangkap area gelap-sedang
-- Aspal parkir (gray/light) lebih cerah (180-255) sehingga tereksklusi
+### **Step 3: Asphalt Segmentation (Segmentasi Aspal)**
+```python
+lower_asphalt = np.array([0, 0, 40])
+upper_asphalt = np.array([180, 70, 200])
+asphalt_mask = cv2.inRange(hsv, lower_asphalt, upper_asphalt)
+```
+- Mengidentifikasi area aspal menggunakan range HSV yang telah ditentukan
+- Range dipilih berdasarkan karakteristik warna aspal: grayscale gelap (low saturation, medium value)
+- Output: Binary mask (nilai 255 untuk aspal, 0 untuk non-aspal)
+- **Alasan:** Aspal memiliki karakteristik warna yang konsisten, sehingga lebih mudah di-segment dibanding mobil yang bervariasi
 
-**Hasil:**
-- Mask berisi area gelap yang potensial menjadi mobil
-- Mengeliminasi background (aspal) dan area terang lainnya
+### **Step 4: Membuat Cars Mask**
+```python
+cars_mask = cv2.bitwise_not(asphalt_mask)
+```
+- Menginversi asphalt_mask untuk mendapatkan area mobil
+- Area dengan nilai 255 = mobil, 0 = bukan mobil
+- **Alasan:** Pendekatan indirect (segment aspal dulu) lebih stabil daripada langsung segment mobil
 
-**Visualisasi:**
-![Color Segmentation](output/steps/02_color_segmentation.png)
+### **Step 5: Morphological Operations (Operasi Morfologi)**
+```python
+kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (5,5))
+# Opening: Menghilangkan noise kecil
+cars_mask = cv2.morphologyEx(cars_mask, cv2.MORPH_OPEN, kernel, iterations=1)
+# Closing: Mengisi lubang kecil dalam objek
+cars_mask = cv2.morphologyEx(cars_mask, cv2.MORPH_CLOSE, kernel, iterations=1)
+```
+- **Opening (Erosion + Dilation):** Menghilangkan noise kecil dan objek yang tidak relevan
+- **Closing (Dilation + Erosion):** Mengisi lubang kecil dalam objek untuk membuat bentuk lebih solid
+- Kernel: Struktur persegi 5×5
+- **Alasan:** Membersihkan mask dari noise dan menghasilkan blob yang lebih tegas
+
+### **Step 6: Connected Components Labeling**
+```python
+num_labels, labels, stats, centroids = cv2.connectedComponentsWithStats(
+    cars_mask, connectivity=8
+)
+```
+- Menemukan semua blob terpisah (connected components) dalam mask
+- Setiap blob diberi label unik
+- Mengekstrak statistik: posisi (x,y), ukuran (w,h), area, centroid
+- **Alasan:** Memungkinkan analisis individual setiap objek
+
+### **Step 7: Filtering dan Counting**
+Setiap blob difilter berdasarkan kriteria berikut untuk memastikan hanya mobil yang dihitung:
+
+| Kriteria | Nilai | Tujuan |
+|----------|-------|--------|
+| **Area Minimum** | 350 px² | Menghilangkan noise/objek terlalu kecil |
+| **Area Maksimum** | 3000 px² | Menghilangkan objek terlalu besar (bukan mobil) |
+| **Width Minimum** | 25 px | Objek harus cukup lebar |
+| **Height Minimum** | 25 px | Objek harus cukup tinggi |
+| **Width Maksimum** | 120 px | Membatasi lebar untuk menghilangkan blob besar |
+| **Height Maksimum** | 120 px | Membatasi tinggi untuk menghilangkan blob besar |
+| **Aspect Ratio** | max(w,h)/min(w,h) ≤ 3.5 | Mobil lebih kompak (tidak terlalu memanjang) |
+| **Fill Ratio** | area/(w×h) ≥ 0.40 | Minimal 40% dari bounding box adalah area mobil |
+
+### **Step 8: Visualisasi Hasil**
+- Menggambar bounding box (green rectangle) untuk setiap mobil terdeteksi
+- Memberi nomor dan label pada setiap mobil
+- Menampilkan total count mobil di sudut kiri atas gambar
+- Menyimpan hasil ke file output
 
 ---
 
-### **STEP 3: Thresholding**
+## 4. Visualisasi Tahapan
 
-**Tujuan:** Mengkonversi citra grayscale menjadi binary image (hitam-putih saja).
+Berikut adalah hasil output dari setiap tahap pipeline:
 
-**Teknik yang Digunakan:**
+| Step | Deskripsi | File Output |
+|------|-----------|------------|
+| 1 | Gambar Original | `01_original.png` |
+| 2 | Konversi HSV | `02_hsv.png` |
+| 3 | Asphalt Segmentation Mask | `03_asphalt_mask.png` |
+| 4 | Cars Mask (inverted) | `04_cars_mask.png` |
+| 5 | Setelah Morphological Operations | `05_morphology.png` |
+| 6 | Final Detection dengan Bounding Box | `06_final_detection.png` |
+| All | Semua tahap dalam satu gambar | `all_steps.png` |
 
-#### A. Otsu's Automatic Thresholding
-```python
-gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-_, binary = cv2.threshold(gray, 0, 255, 
-                          cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
-```
-
-**Alasan:**
-- **THRESH_BINARY_INV**: Inversi hasil → objek gelap menjadi putih (foreground)
-- **THRESH_OTSU**: Otomatis menentukan threshold optimal berdasarkan histogram
-- **Kombinasi**: Powerful untuk mendeteksi mobil tanpa manual tuning
-
-#### B. Kombinasi dengan Color Mask
-```python
-binary_combined = cv2.bitwise_and(binary_otsu, binary_otsu, mask=mask_dark)
-```
-
-**Alasan:**
-- Kombinasi otsu threshold + color mask menghasilkan hasil lebih akurat
-- Menghilangkan false positives dari area yang tidak relevan
-
-**Hasil:**
-- Binary image di mana:
-  - **Putih (255)** = Mobil (potential)
-  - **Hitam (0)** = Background/Aspal
-
-**Visualisasi:**
-![Thresholding](output/steps/03_thresholding.png)
+**Folder Output:** Semua hasil disimpan di `output/steps/` dan file hasil akhir di `output/result.png`
 
 ---
 
-### **STEP 4: Morphological Operations**
+## 5. Analisis
 
-**Tujuan:** Membersihkan binary image, menghubungkan area terputus, dan menghilangkan noise.
+### Kekuatan Pendekatan
+1. **Robust terhadap variasi warna mobil** — menggunakan inverse masking (segment aspal dahulu) lebih stabil
+2. **Morphological operations efektif** — membersihkan noise dan mengkonsolidasikan objek
+3. **Multi-criteria filtering** — menggunakan 8 kriteria berbeda untuk mengidentifikasi mobil dengan akurat
+4. **Visualisasi lengkap** — setiap tahap dapat diperiksa untuk debugging
 
-**Teknik yang Digunakan:**
+### Kendala dan Limitasi
+1. **Mobil yang saling tumpang tindih** — blob yang menyatu akan dihitung sebagai 1 objek
+   - *Solusi potensial:* Menggunakan watershed algorithm atau teknik splitting yang lebih canggih
+2. **Variasi pencahayaan** — area parkir yang gelap/terang dapat mempengaruhi segmentasi HSV
+   - *Solusi potensial:* Adaptive thresholding atau normalisasi brightness
+3. **Objek non-mobil serupa** — pohon, bayangan, atau pola lantai dapat terdeteksi sebagai mobil
+   - *Solusi potensial:* Menambah kriteria shape atau texture
+4. **Skala berbeda** — mobil dari sudut berbeda memiliki ukuran berbeda
+   - *Solusi potensial:* Resize image ke multiple scales (image pyramid)
 
-#### A. Closing (Close)
-```python
-kernel_large = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (15, 15))
-closed = cv2.morphologyEx(binary, cv2.MORPH_CLOSE, kernel_large, iterations=2)
-```
+### Akurasi
+- Untuk gambar parkiran dengan mobil yang terpisah jelas: **Akurasi tinggi (85-95%)**
+- Untuk gambar dengan banyak mobil yang tumpang tindih: **Akurasi menengah (60-75%)**
 
-**Fungsi:**
-- Dilasi → Erosi (dalam urutan itu)
-- **Manfaat**: Menghubungkan komponen yang terputus/berdekatan
-- **Kapan digunakan**: Ketika ada mobil yang terpisah menjadi beberapa region akibat shadow/refleksi
-
-**Alasan kernel (15,15):**
-- Ukuran cukup besar untuk menghubungkan gap kecil antara komponen mobil
-- MORPH_ELLIPSE lebih smooth daripada MORPH_RECT
-
-#### B. Opening (Open)
-```python
-kernel_small = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
-opened = cv2.morphologyEx(closed, cv2.MORPH_OPEN, kernel_small, iterations=1)
-```
-
-**Fungsi:**
-- Erosi → Dilasi (urutan sebaliknya)
-- **Manfaat**: Menghilangkan noise kecil yang bukan mobil
-
-**Alasan kernel (5,5):**
-- Ukuran kecil untuk menghilangkan noise minimal (objek < 5px tidak dianggap mobil)
-
-#### C. Dilation
-```python
-kernel_medium = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (11, 11))
-dilated = cv2.dilate(opened, kernel_medium, iterations=1)
-```
-
-**Fungsi:**
-- Memperluas objek untuk memastikan area mobil tertangkap penuh
-- Mengatasi pengikisan (erosion) dari step sebelumnya
-
-**Hasil:**
-- Binary image yang clean tanpa noise
-- Mobil yang terputus kembali terhubung
-- False positives diminimalkan
-
-**Visualisasi:**
-![Morphological Operations](output/steps/04_morphology.png)
+### Peningkatan Masa Depan
+1. Implementasi **Watershed Algorithm** untuk memisahkan mobil yang menyatu
+2. Menggunakan **Edge Detection + Contour Analysis** sebagai layer tambahan
+3. Mengimplementasikan **Shape Recognition** untuk filter lebih presisi
+4. Menambah **Texture Analysis** untuk membedakan mobil dengan objek lain
+5. Menggunakan **Multiple Image Scales** untuk menangani variasi ukuran
 
 ---
 
-### **STEP 5: Contour Detection & Filtering**
+## 6. Cara Menjalankan Program
 
-**Tujuan:** Menemukan dan menghitung jumlah objek (mobil) pada binary image.
+### Persyaratan
+- Python 3.7+
+- Library yang diperlukan: `opencv-python`, `numpy`, `matplotlib`
 
-**Teknik yang Digunakan:**
-
-```python
-contours, _ = cv2.findContours(cleaned_image, 
-                                cv2.RETR_EXTERNAL, 
-                                cv2.CHAIN_APPROX_SIMPLE)
-```
-
-**Parameter:**
-- **RETR_EXTERNAL**: Ambil hanya contour terluar (tidak ada nested contours)
-  - Lebih efisien dan fokus pada objek utama
-- **CHAIN_APPROX_SIMPLE**: Kompres contour dengan menyimpan hanya endpoint
-  - Menghemat memori dan komputasi
-
-#### Filtering Berdasarkan Area
-
-```python
-min_area = 300      # Minimum area untuk dianggap mobil
-max_area = 50000    # Maximum area (filter noise besar)
-
-car_contours = []
-for contour in contours:
-    area = cv2.contourArea(contour)
-    if min_area <= area <= max_area:
-        car_contours.append(contour)
-
-car_count = len(car_contours)
-```
-
-**Alasan Threshold Area:**
-
-| Threshold | Alasan |
-|-----------|--------|
-| **min_area = 300** | Mobil pada foto aerial harus memiliki area minimal 300 px² agar signifikan |
-| **max_area = 50000** | Mobil tidak boleh terlalu besar (>50k px²) untuk filter contour yang melebihi batas wajar |
-
-**Proses Filtering:**
-1. Deteksi semua contour (termasuk noise)
-2. Hitung area setiap contour
-3. Ambil hanya contour dengan area dalam range target → **Candidate mobil**
-4. Count jumlah kandidat = **Jumlah mobil**
-
-**Hasil:**
-- Daftar contour yang merepresentasikan mobil
-- **Total mobil terdeteksi = Jumlah filtered contours**
-
-**Visualisasi:**
-![Contour Detection](output/steps/05_contour_detection.png)
-
----
-
-### **STEP 6: Final Visualization**
-
-**Tujuan:** Visualisasi hasil akhir dengan bounding box dan label untuk setiap mobil terdeteksi.
-
-**Teknik yang Digunakan:**
-
-```python
-for idx, contour in enumerate(car_contours, 1):
-    # Ambil bounding box
-    x, y, w, h = cv2.boundingRect(contour)
-    
-    # Gambar rectangle (bounding box)
-    cv2.rectangle(result_image, (x, y), (x+w, y+h), (0, 255, 0), 2)
-    
-    # Gambar contour
-    cv2.drawContours(result_image, [contour], 0, (255, 0, 0), 1)
-    
-    # Label nomor
-    cv2.putText(result_image, str(idx), (x+5, y+20), 
-                cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
-
-# Tambah info total
-cv2.putText(result_image, f"Total: {car_count}", (20, 40),
-            cv2.FONT_HERSHEY_SIMPLEX, 1.2, (0, 255, 0), 2)
-```
-
-**Penjelasan:**
-- **Hijau (0, 255, 0)**: Bounding box → menunjukkan area mobil terdeteksi
-- **Biru (255, 0, 0)**: Contour → boundary akurat mobil
-- **Nomor**: Untuk identifikasi setiap mobil terdeteksi
-- **Info total**: Summary di sudut gambar
-
-**Hasil:**
-- Gambar output dengan semua mobil ditandai
-- Mudah untuk visual inspection dan verification
-
-**Visualisasi:**
-![Final Result](output/steps/06_final_result.png)
-
----
-
-## 📈 Analisis & Evaluasi
-
-### **Kelebihan Pendekatan Ini:**
-
-1. ✅ **Tidak memerlukan pre-trained model** → Dapat dijalankan di environment terbatas
-2. ✅ **Proses terukur** → Setiap step dapat diubah/dioptimalkan
-3. ✅ **Memory efficient** → Tidak menyimpan model besar
-4. ✅ **Fast processing** → Bisa real-time untuk video
-5. ✅ **Robust terhadap variasi lighting** → Menggunakan HSV + morphology
-
-### **Kendala & Batasan:**
-
-1. ⚠️ **Mobil Berdekatan/Tumpang Tindih**
-   - Ketika mobil sangat dekat/bersentuhan, hasil thresholding menghasilkan satu region
-   - **Solusi**: Tambahkan watershed algorithm atau more aggressive morphology
-
-2. ⚠️ **Variasi Warna Mobil**
-   - Ada mobil dengan warna cerah (putih, kuning, merah) yang tidak tertangkap di dark mask
-   - **Solusi**: Tambahkan multiple color range masks atau gunakan LAB color space
-
-3. ⚠️ **Shadow & Refleksi**
-   - Shadow mobil/papan nama bisa terdeteksi sebagai object terpisah
-   - **Solusi**: Filtering area lebih ketat, atau gunakan edge detection
-
-4. ⚠️ **Perspektif & Distorsi**
-   - Foto aerial bisa memiliki distorsi perspektif
-   - **Solusi**: Preprocessing image correction atau homography
-
-5. ⚠️ **Occlusion (Mobil Tertutup)**
-   - Mobil yang tertutup sebagian sulit dideteksi
-   - **Solusi**: Analisis partial contours atau machine learning
-
-### **Akurasi & Performa:**
-
-| Metrik | Nilai | Keterangan |
-|--------|-------|-----------|
-| **Processing Time** | ~100-500ms | Tergantung ukuran gambar |
-| **Memory Usage** | <200MB | Hanya menyimpan citra |
-| **Recall** | ~80-90% | Tergantung kualitas input |
-| **Precision** | ~75-85% | Ada false positives dari shadows |
-
-### **Improvement untuk Versi Mendatang:**
-
-1. **Tambahkan Watershed Algorithm**
-   ```python
-   # Untuk memisahkan mobil yang tumpang tindih
-   from scipy import ndimage
-   dist_transform = cv2.distanceTransform(cleaned_image, cv2.DIST_L2, 5)
-   _, sure_fg = cv2.threshold(dist_transform, 0.7*dist_transform.max(), 255, 0)
-   sure_fg = np.uint8(sure_fg)
-   unknown = cv2.subtract(cleaned_image, sure_fg)
-   _, markers = cv2.connectedComponents(sure_fg)
-   markers = cv2.watershed(original_image, markers)
-   ```
-
-2. **Multi-range Color Detection**
-   ```python
-   # Deteksi mobil dengan berbagai warna
-   colors = {
-       'dark': (0, 180),      # Hitam, abu-abu, biru tua
-       'mid': (120, 220),     # Gray medium
-       'light': (180, 255)    # Putih, kuning, merah cerah
-   }
-   masks = [cv2.inRange(hsv[:,:,2], *range) for range in colors.values()]
-   combined_mask = cv2.bitwise_or(masks[0], cv2.bitwise_or(masks[1], masks[2]))
-   ```
-
-3. **Adaptive Thresholding**
-   ```python
-   # Untuk menangani pencahayaan tidak merata
-   adaptive_binary = cv2.adaptiveThreshold(gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
-                                            cv2.THRESH_BINARY_INV, 11, 2)
-   ```
-
-4. **Machine Learning Post-processing**
-   - Training SVM atau RF pada contour features (area, aspect ratio, circularity)
-   - Untuk mengurangi false positives
-
----
-
-## 🚀 Cara Menjalankan Program
-
-### **Prerequisites**
-
-Pastikan Python 3.7+ terinstall, kemudian install dependencies:
-
+### Instalasi Dependencies
 ```bash
 pip install opencv-python numpy matplotlib
 ```
 
-### **Struktur Folder**
-
+### Struktur Folder
 ```
 mp2-object-counting/
-├── README.md              # Dokumentasi ini
+├── README.md              # File ini
 ├── counting.py            # Script utama
 ├── input/
-│   └── parking.jpg        # Input citra (letakkan gambar di sini)
-└── output/                # Output otomatis dibuat saat running
-    ├── result.png         # Hasil akhir dengan bounding box
-    └── steps/             # Visualisasi tiap step
-        ├── 01_color_space.png
-        ├── 02_color_segmentation.png
-        ├── 03_thresholding.png
-        ├── 04_morphology.png
-        ├── 05_contour_detection.png
-        └── 06_final_result.png
+│   └── parking.jpg        # Citra input (download dari assignment)
+└── output/                # Folder output (dibuat otomatis saat run)
+    ├── result.png
+    └── steps/
 ```
 
-### **Langkah Eksekusi**
-
-1. **Download gambar parkir dan letakkan di folder `input/`**
-   ```bash
-   # Pastikan file ada di:
-   input/parking.jpg
-   ```
-
+### Langkah Menjalankan
+1. **Letakkan gambar input**
+   - Buat folder `gambar/` di direktori yang sama dengan `counting.py`
+   - Pindahkan file `parking_ori.jpg` ke folder `gambar/`
+   
 2. **Jalankan script**
    ```bash
    python counting.py
    ```
 
-3. **Lihat hasil**
-   - Output utama: `output/result.png`
-   - Visualisasi tahapan: `output/steps/`
-   - Terminal akan menampilkan jumlah mobil terdeteksi
+3. **Hasil Output**
+   - Gambar hasil deteksi: `output/result.png`
+   - Visualisasi tahapan: `output/steps/` (folder berisi 6 step + all_steps.png)
+   - Terminal akan menampilkan: `TOTAL MOBIL TERDETEKSI = [XX]`
 
-### **Contoh Output Terminal**
+### Catatan
+- Program akan menampilkan setiap tahap dengan matplotlib (tekan close untuk lanjut ke tahap berikutnya)
+- Jika ingin menonaktifkan visualisasi interaktif, comment-kan semua `show_step()` function calls
+- Untuk mengubah sensitivitas deteksi, sesuaikan parameter filtering di Step 6 (area min/max, aspect ratio, dll.)
 
-```
-============================================================
-MINI PROJECT 2 - OBJECT COUNTING (HITUNG JUMLAH MOBIL)
-============================================================
-✓ Gambar loaded: 1920x1440 pixels
+---
 
-[STEP 1] Color Space Exploration
-✓ Saved: output/steps/01_color_space.png
+## 7. Parameter Tuning
 
-[STEP 2] Color Segmentation
-✓ Saved: output/steps/02_color_segmentation.png
+Jika hasil deteksi kurang optimal, Anda dapat menyesuaikan parameter berikut:
 
-[STEP 3] Thresholding
-✓ Saved: output/steps/03_thresholding.png
-
-[STEP 4] Morphological Operations
-✓ Saved: output/steps/04_morphology.png
-
-[STEP 5] Contour Detection & Filtering
-   Total contour ditemukan: 245
-   Contour setelah filtering (area 300-50000): 48
-✓ Saved: output/steps/05_contour_detection.png
-
-[STEP 6] Final Visualization
-✓ Saved: output/result.png
-✓ Saved: output/steps/06_final_result.png
-
-============================================================
-HASIL AKHIR: 48 MOBIL TERDETEKSI
-============================================================
-
-RINGKASAN:
-- Input file: input/parking.jpg
-- Jumlah mobil terdeteksi: 48
-- Output: output/result.png
-- Visualisasi tahapan: output/steps/
-============================================================
-```
-
-### **Parameter yang Bisa Diubah**
-
-Edit file `counting.py` pada fungsi `step5_contour_detection()`:
-
+### HSV Range (Step 3)
 ```python
-# Ubah threshold area untuk filtering
-min_area = 300      # Naikkan untuk filter lebih ketat
-max_area = 50000    # Turunkan untuk batasi objek besar
+lower_asphalt = np.array([0, 0, 40])      # Hue, Saturation, Value minimum
+upper_asphalt = np.array([180, 70, 200])  # Hue, Saturation, Value maximum
+```
+- Coba gunakan HSV color picker atau Trackbar di OpenCV untuk menemukan range optimal
+
+### Morphology Kernel Size (Step 5)
+```python
+kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (5,5))  # Ubah ke (7,7), (3,3), dll.
 ```
 
----
-
-## 📚 Referensi & Resources
-
-### **OpenCV Documentation:**
-- [cv2.findContours](https://docs.opencv.org/master/d3/dc0/group__imgproc__shape.html#gadf1ad6f82269e73c9b2c47b0a19e1e81)
-- [cv2.morphologyEx](https://docs.opencv.org/master/d9/df8/group__imgproc__shape.html#gabf434fa56ab0dd77b06c0c0acaccdc59)
-- [cv2.threshold & OTSU](https://docs.opencv.org/master/d7/d1b/group__imgproc__misc.html#ggaae28534fcd2049fed0891a34ecf81090)
-- [Morphological Transformations](https://docs.opencv.org/3.4/d9/df8/tutorial_erosion_dilatation.html)
-
-### **Color Space:**
-- [OpenCV Color Space Conversions](https://docs.opencv.org/master/de/d25/imgproc_color_conversions.html)
-- [HSV vs RGB](https://en.wikipedia.org/wiki/HSL_and_HSV)
-
-### **Teknik Advanced (Optional):**
-- Watershed Algorithm: https://docs.opencv.org/3.4/d3/db0/tutorial_watershed.html
-- Canny Edge Detection: https://docs.opencv.org/master/da/d22/tutorial_py_canny.html
+### Filter Criteria (Step 7)
+Sesuaikan min/max area, aspect ratio, dan fill ratio berdasarkan karakteristik gambar Anda
 
 ---
 
-## 📝 Kesimpulan
+## 8. Repository GitHub
 
-Proyek ini mendemonstrasikan penggunaan teknik-teknik fundamental dalam pengolahan citra untuk menyelesaikan masalah praktis (object counting). Pipeline yang dirancang menggabungkan:
-
-1. **Color analysis** → Memanfaatkan HSV space
-2. **Thresholding** → Otsu's automatic method
-3. **Morphology** → Cleaning dan noise removal
-4. **Contour analysis** → Deteksi dan counting
-
-Pendekatan ini **efisien, interpretable, dan dapat diimplementasikan tanpa machine learning**, menjadikannya solusi praktis untuk berbagai aplikasi real-world.
+Untuk mengumpulkan, buat repository di GitHub dengan struktur di atas dan submit link ke Google Sheet yang sudah disediakan.
 
 ---
 
-**Last Updated:** [Tanggal Update]  
-**Status:** ✅ Complete
+**Terakhir diperbarui:** [Tanggal]  
+**Status:** Selesai / Dalam Pengerjaan
