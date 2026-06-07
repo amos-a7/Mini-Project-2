@@ -220,11 +220,4 @@ Sesuaikan min/max area, aspect ratio, dan fill ratio berdasarkan karakteristik g
 
 ---
 
-## 8. Repository GitHub
 
-Untuk mengumpulkan, buat repository di GitHub dengan struktur di atas dan submit link ke Google Sheet yang sudah disediakan.
-
----
-
-**Terakhir diperbarui:** [Tanggal]  
-**Status:** Selesai / Dalam Pengerjaan
